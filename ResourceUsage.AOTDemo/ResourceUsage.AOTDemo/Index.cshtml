@@ -1,0 +1,249 @@
+﻿@page
+@model ResourceUsage.AOTDemo.IndexModel
+@{
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Request Timer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #ddd;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+
+        label {
+            margin-top: 20px;
+        }
+
+        input[type="text"] {
+            padding: 10px;
+            margin-top: 10px;
+            width: 300px;
+        }
+
+        #chartContainer {
+            width: 100%;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teste de Performance de API</h1>
+    <label for="upperLimit">Informe o limite superior para o cálculo de primos:</label>
+    <input type="text" id="upperLimit" value="@Model.Limit">
+    <button onclick="callApi()">Chamar API</button>
+    <button onclick="clearPage()">Limpar Página</button>
+    <div>
+        <label for="batchCount">Execuções simultâneas:</label>
+        <input type="number" id="batchCount" value="10" min="1">
+        <label>
+            <input type="checkbox" id="executeInQueue"> Executar em fila
+        </label>
+        <label for="interval">Disparar a cada (segundos):</label>
+        <input type="number" id="interval" value="0.5" step="0.1" min="0.1">
+        <button onclick="processBatch()">Processar em lote</button>
+    </div>
+    <p id="responseTime"></p>
+
+    <div id="chartContainer">
+        <canvas id="memoryTimeChart"></canvas>
+    </div>
+
+    <table id="resultsTable">
+        <thead>
+            <tr>
+                <th>Order</th>
+                <th>Test Type</th>
+                <th>Input Limit</th>
+                <th>Primes Count</th>
+                <th>Processor Time (ms)</th>
+                <th>Processor Count</th>
+                <th>Memory Usage (MB)</th>
+                <th>Duration (ms)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Linhas serão adicionadas aqui dinamicamente -->
+        </tbody>
+    </table>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        var callOrder = 0;
+        var memoryData = [];
+        var timeData = [];
+        var processorTimeData = [];
+        var labels = [];
+        var memoryTimeChart;  // Referência global para o gráfico
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var ctx = document.getElementById('memoryTimeChart').getContext('2d');
+            memoryTimeChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Memory Usage',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgb(255, 99, 132)',
+                            data: memoryData,
+                            fill: false,
+                        }, 
+                        {
+                            label: 'Duration',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgb(54, 162, 235)',
+                            data: timeData,
+                            fill: false,
+                        },
+                        {
+                            label: 'Processor Time',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderColor: 'rgb(75, 192, 192)',
+                            data: processorTimeData,
+                            fill: false,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    title: {
+                        display: true,
+                        text: 'Memory, Processing Time, and Processor Time Variation'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true // Garante que o eixo Y comece em zero
+                        },
+                        x: {
+                            beginAtZero: true // Garante que o eixo X comece em zero
+                        }
+                    }
+                }
+            });
+        });
+
+        function callApi() {
+            var upperLimit = document.getElementById('upperLimit').value;
+            var apiURL = `@Model.ApiUrl?limit=${upperLimit}`;
+            console.time("Tempo da API");
+
+            fetch(apiURL)
+                .then(response => response.json())
+                .then(data => {
+                    console.timeEnd("Tempo da API");
+                    console.log(data);
+                    document.getElementById('responseTime').innerHTML = `Tempo de resposta: ${performance.now().toFixed(2)} ms`;
+                    updateTable(data);
+                    updateChartData(data);
+                })
+                .catch(error => {
+                    console.error('Erro na chamada da API:', error);
+                    document.getElementById('responseTime').innerHTML = "Erro ao chamar a API.";
+                });
+        }
+
+        function processBatch() {
+            var batchCount = parseInt(document.getElementById('batchCount').value);
+            var executeInQueue = document.getElementById('executeInQueue').checked;
+            var interval = parseFloat(document.getElementById('interval').value) * 1000;
+
+            if (executeInQueue) {
+                let i = 0;
+                function next() {
+                    if (i < batchCount) {
+                        callApi();
+                        i++;
+                        setTimeout(next, interval);
+                    }
+                }
+                next();
+            } else {
+                for (let i = 0; i < batchCount; i++) {
+                    callApi();
+                }
+            }
+        }
+
+        function updateTable(data) {
+            callOrder++;
+            var table = document.getElementById('resultsTable').getElementsByTagName('tbody')[0];
+            var newRow = table.insertRow(table.rows.length);
+            newRow.innerHTML = `
+                <td>${callOrder}</td>
+                <td>${data.testType}</td>
+                <td>${data.inputLimit}</td>
+                <td>${data.primesCount}</td>
+                <td>${data.processorTime}</td>
+                <td>${data.processorCount}</td>
+                <td>${data.memory}</td>
+                <td>${data.duration}</td>
+            `;
+        }
+
+        function updateChartData(data) {
+            labels.push(`#${callOrder}`);
+            memoryData.push(parseFloat(data.memory));
+            timeData.push(parseFloat(data.duration));
+            processorTimeData.push(parseFloat(data.processorTime));
+
+            memoryTimeChart.data.labels = labels;
+            memoryTimeChart.data.datasets[0].data = memoryData;
+            memoryTimeChart.data.datasets[1].data = timeData;
+            memoryTimeChart.data.datasets[2].data = processorTimeData;
+            memoryTimeChart.update();  // Atualiza o gráfico com novos dados
+        }
+
+        function clearPage() {
+            location.reload(); // Recarrega a página
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+@ResourceUsage.AOTDemo_HostAddress = http://localhost:5102
+
+GET {{ResourceUsage.AOTDemo_HostAddress}}benchmark/run?limit=1000
+Accept: application/json
+
+###
+
+GET {{ResourceUsage.AOTDemo_HostAddress}}/benchmark/run?limit=1000
+Accept: application/json
+
+###
